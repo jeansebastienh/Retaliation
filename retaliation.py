@@ -79,6 +79,8 @@ import re
 import json
 import urllib2
 import base64
+import BaseHTTPServer
+import urlparse
 
 import usb.core
 import usb.util
@@ -154,6 +156,38 @@ STOP    = 0x20
 
 DEVICE = None
 DEVICE_TYPE = None
+
+class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    def do_GET(s):
+        """Respond to a GET request."""
+        s.send_response(200)
+        s.send_header("Content-type", "text/html")
+        s.end_headers()
+        s.wfile.write("<html><head><title>KABOUM</title></head>")
+        s.wfile.write("<body><p>This is a test.</p>")
+        # If someone went to "http://something.somewhere.net/foo/bar/",
+        # then s.path equals "/foo/bar/".
+	urlparts = s.path.split('/')
+	direction = None
+	if len(urlparts) > 1 and urlparts[1] == 'direction':
+		direction = urlparts[2]
+	value = None
+	if len(urlparts) > 3 and urlparts[3] == 'value':
+		value = urlparts[4]
+		
+	s.wfile.write("<p>You accessed path: %s</p>" % s.path)
+	s.wfile.write("<ul>")
+	s.wfile.write("<li>direction : %s</li>" % direction)
+	s.wfile.write("<li>value : %s</li>" % value)
+	s.wfile.write("</ul>")
+        s.wfile.write("</body></html>")
+	try:
+		run_command(direction, int(value))
+	except:
+		pass
+		
+	
+
 
 def usage():
     print "Usage: retaliation.py [command] [value]"
@@ -307,27 +341,35 @@ def jenkins_wait_for_event():
 
     # Data in the format: 
     #   {"name":"Project", "url":"JobUrl", "build":{"number":1, "phase":"STARTED", "status":"FAILURE" }}
+    server_class = BaseHTTPServer.HTTPServer
+    httpd = server_class(('', 80), MyHandler)
+    print "Server Started"
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    httpd.server_close()
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('', JENKINS_NOTIFICATION_UDP_PORT))
-
-    while True:
-        data, addr = sock.recvfrom(8 * 1024)
-        try:
-            notification_data = json.loads(data)
-            status = notification_data["build"]["status"].upper()
-            phase  = notification_data["build"]["phase"].upper()
-            if phase == "FINISHED" and status.startswith("FAIL"):
-                target = jenkins_get_responsible_user(notification_data["name"])
-                if target == None:
-                    print "WARNING: Could not identify the user who broke the build!"
-                    continue
-
-                print "Build Failed! Targeting user: " + target
-                jenkins_target_user(target)
-        except:
-            pass
-                
+#    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#    sock.bind(('', JENKINS_NOTIFICATION_UDP_PORT))
+#
+#    while True:
+#        data, addr = sock.recvfrom(8 * 1024)
+#        try:
+#            notification_data = json.loads(data)
+#            status = notification_data["build"]["status"].upper()
+#            phase  = notification_data["build"]["phase"].upper()
+#            if phase == "FINISHED" and status.startswith("FAIL"):
+#                target = jenkins_get_responsible_user(notification_data["name"])
+#                if target == None:
+#                    print "WARNING: Could not identify the user who broke the build!"
+#                    continue
+#
+#                print "Build Failed! Targeting user: " + target
+#                jenkins_target_user(target)
+#        except:
+#            pass
+#                
 
 def main(args):
 
